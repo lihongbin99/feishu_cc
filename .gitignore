@@ -1,0 +1,7 @@
+__pycache__/
+log/
+.env
+bot.db
+
+feishu-cc-server.exe
+feishu-cc-server.xml
