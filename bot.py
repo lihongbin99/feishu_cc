@@ -228,16 +228,28 @@ def delete_card(message_id: str) -> None:
     client.im.v1.message.delete(DeleteMessageRequest.builder().message_id(message_id).build())
 
 
-def reply_file(message_id: str, name: str, content: bytes) -> None:
-    """上传一个文件并作为回复发回飞书"""
+def reply_file(message_id: str, name: str, content: bytes):
+    """上传一个文件并作为回复发回飞书，返回新消息 id（用于绑定会话）"""
     resp = client.im.v1.file.create(CreateFileRequest.builder().request_body(
         CreateFileRequestBody.builder().file_type("stream").file_name(name)
         .file(io.BytesIO(content)).build()).build())
     if not resp.success():
-        return
-    client.im.v1.message.reply(ReplyMessageRequest.builder().message_id(message_id).request_body(
+        return None
+    r = client.im.v1.message.reply(ReplyMessageRequest.builder().message_id(message_id).request_body(
         ReplyMessageRequestBody.builder().content(json.dumps({"file_key": resp.data.file_key}))
         .msg_type("file").build()).build())
+    return r.data.message_id if r.success() else None
+
+
+def reply_md(message_id: str, md: str, title: str):
+    """AI 结果以 markdown 卡片回复；内容过长（超卡片上限）则改发 .md 文件"""
+    card = {"elements": [{"tag": "markdown", "content": md}]}
+    if len(json.dumps(card).encode("utf-8")) <= 28000:
+        rid = send_card(message_id, card)
+        if rid:
+            return rid
+    name = re.sub(r'[\\/:*?"<>|\n\r]+', "_", title or "result")[:40] + ".md"
+    return reply_file(message_id, name, md.encode("utf-8"))
 
 
 def fmt_cost(data: dict) -> str:
@@ -411,7 +423,7 @@ def run_task(text, msg, chat, new_dir=None):
             dbw("UPDATE msgs SET status='stopped', ended=? WHERE card=?", end, card_id)
             return
         answer = data.get("result") or "（无输出）"
-        rid = reply(msg.message_id, answer)
+        rid = reply_md(msg.message_id, answer, text)
         new_sid = data.get("session_id") or sid
         cost = json.dumps({"total_cost_usd": data.get("total_cost_usd", 0),
                            "duration_ms": data.get("duration_ms", 0),
