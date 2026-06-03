@@ -259,15 +259,15 @@ def fmt_status(e: dict) -> str:
 
 def ask_claude(prompt: str, cwd: str, sid, card_id) -> dict:
     """调用 Claude Code；sid 非空则 --resume 续会话。进程存入 procs[card_id] 以便强停"""
-    cmd = ["claude", "-p", prompt, "--dangerously-skip-permissions", "--output-format", "json"]
+    cmd = ["claude", "-p", "--dangerously-skip-permissions", "--output-format", "json"]
     if sid:
         cmd += ["--resume", sid]
     proc = subprocess.Popen(
-        cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, encoding="utf-8", shell=True,  # Windows 上 claude 是 .cmd，需要 shell
     )
     procs[card_id] = proc
-    out, err = proc.communicate()  # 阻塞直到结束（或被 kill）
+    out, err = proc.communicate(input=prompt)  # prompt 经 stdin 传入，避免含换行被 cmd.exe 截断
     procs.pop(card_id, None)
     try:
         return json.loads(out)
